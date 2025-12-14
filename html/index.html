@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rental</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Herr+Von+Muellerhoff&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body style="display: none;">
+    <div class="container">
+        <div class="rental-panel">
+            <div class="header">
+                <div class="logo">
+                    <div class="logo-icon"><i class="fa-solid fa-car"></i></div>
+                    <div class="logo-text">
+                        <span class="logo-subtitle">RENTAL</span>
+                    </div>
+                </div>
+
+                <div class="tab-buttons">
+                    <button class="tab-btn active" id="tab-browse" data-tab="browse">
+                        <i class="fa-solid fa-car-side"></i> Browse
+                    </button>
+                    <button class="tab-btn" id="tab-myrentals" data-tab="myrentals">
+                        <i class="fa-solid fa-folder-open"></i> My Rentals
+                    </button>
+                </div>
+
+                <div class="search-bar" id="search-container">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <input type="text" placeholder="Search car..." id="search-input">
+                </div>
+                <div class="filter-buttons">
+                    <button class="btn-icon" id="filter-favorites"><i class="fa-solid fa-star"></i></button>
+                    <button class="btn-icon close" id="close-btn"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+            </div>
+
+            <div class="car-grid" id="car-grid">
+                <div class="empty-state" id="empty-state" style="display: none;">
+                    <i class="fa-solid fa-car-side"></i>
+                    <span>No vehicles found</span>
+                </div>
+            </div>
+
+            <div class="my-rentals-panel" id="my-rentals-panel" style="display: none;">
+                <div class="rentals-list" id="rentals-list"></div>
+                <div class="empty-rentals" id="empty-rentals" style="display: none;">
+                    <i class="fa-solid fa-folder-open"></i>
+                    <span>No active rentals</span>
+                    <p>Rent a vehicle to get started!</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay"></div>
+
+    <div class="details-panel modal">
+        <div class="modal-left">
+            <span class="car-tag" id="modal-category">Sports</span>
+            <img src="" alt="Car Preview" class="modal-car-img" id="modal-image">
+            <div class="modal-car-info">
+                <h2 class="modal-car-name" id="modal-name">VEHICLE NAME</h2>
+                <span class="modal-car-manufacturer" id="modal-manufacturer">MANUFACTURER</span>
+            </div>
+        </div>
+
+        <div class="modal-right">
+            <div class="modal-header">
+                <h3>Vehicle Details</h3>
+                <button class="btn-icon close-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div class="modal-stats" id="modal-stats">
+                <div class="stat-row" data-stat="speed">
+                    <div class="stat-label">
+                        <span><i class="fa-solid fa-gauge-high"></i> Top Speed</span>
+                        <span class="stat-val">0%</span>
+                    </div>
+                    <div class="stat-bar">
+                        <div class="stat-fill" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="stat-row" data-stat="acceleration">
+                    <div class="stat-label">
+                        <span><i class="fa-solid fa-bolt"></i> Acceleration</span>
+                        <span class="stat-val">0%</span>
+                    </div>
+                    <div class="stat-bar">
+                        <div class="stat-fill" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="stat-row" data-stat="braking">
+                    <div class="stat-label">
+                        <span><i class="fa-solid fa-circle-stop"></i> Braking Power</span>
+                        <span class="stat-val">0%</span>
+                    </div>
+                    <div class="stat-bar">
+                        <div class="stat-fill" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="stat-row" data-stat="handling">
+                    <div class="stat-label">
+                        <span><i class="fa-solid fa-arrow-right-arrow-left"></i> Handling</span>
+                        <span class="stat-val">0%</span>
+                    </div>
+                    <div class="stat-bar">
+                        <div class="stat-fill" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="rental-price" id="modal-price">
+                $0<span class="per-day">/day</span>
+            </div>
+
+            <div class="rental-options">
+                <div class="custom-dropdown" id="duration-dropdown">
+                    <div class="dropdown-trigger">
+                        <span>1 Day</span>
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </div>
+                    <div class="dropdown-menu" id="duration-menu"></div>
+                </div>
+
+                <div class="custom-dropdown" id="payment-dropdown">
+                    <div class="dropdown-trigger">
+                        <span><i class="fa-solid fa-credit-card"></i> Bank Transfer</span>
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </div>
+                    <div class="dropdown-menu" id="payment-menu"></div>
+                </div>
+            </div>
+
+            <div class="total-price" id="total-price">
+                Total: <span>$0</span>
+            </div>
+
+            <button class="btn-confirm" id="confirm-btn">Confirm Rental</button>
+        </div>
+    </div>
+
+    <div class="contract-overlay" id="contract-overlay"></div>
+    <div class="contract-panel" id="contract-panel">
+        <div class="glow-effect top-right"></div>
+        <div class="glow-effect bottom-left"></div>
+
+        <div class="contract-header">
+            <div class="header-content">
+                <div class="icon-box">
+                    <i class="fa-solid fa-file-signature"></i>
+                </div>
+                <div class="title-box">
+                    <h2>RENTAL AGREEMENT</h2>
+                    <span class="sub-id">CONTRACT #<span id="contract-id">000</span> • OFFICIAL DOCUMENT</span>
+                </div>
+            </div>
+            <button class="btn-close close-contract" id="close-contract">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+
+        <div class="contract-body">
+
+            <div class="grid-container">
+                <div class="info-card">
+                    <div class="card-header">
+                        <i class="fa-solid fa-car"></i>
+                        <span>Vehicle Details</span>
+                    </div>
+                    <div class="card-content">
+                        <div class="detail-row">
+                            <span class="label">Vehicle</span>
+                            <span class="value" id="contract-vehicle">-</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="label">Model</span>
+                            <span class="value accent" id="contract-model">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="info-card">
+                    <div class="card-header">
+                        <i class="fa-solid fa-user-shield"></i>
+                        <span>Renter Identity</span>
+                    </div>
+                    <div class="card-content">
+                        <div class="detail-row">
+                            <span class="label">Citizen ID</span>
+                            <span class="value code-font" id="contract-citizenid">-</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="label">Payment</span>
+                            <span class="value" id="contract-payment">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section-divider">
+                <span>Rental Duration</span>
+            </div>
+
+            <div class="timeline-box">
+                <div class="time-point">
+                    <span class="t-label">Start</span>
+                    <span class="t-date" id="contract-start">-</span>
+                    <span class="t-time" id="contract-start-time">-</span>
+                </div>
+
+                <div class="time-line">
+                    <span class="duration-badge" id="contract-duration">-</span>
+                </div>
+
+                <div class="time-point end-point">
+                    <span class="t-label">End</span>
+                    <span class="t-date" id="contract-end">-</span>
+                    <span class="t-time" id="contract-end-time">-</span>
+                </div>
+            </div>
+
+            <div class="contract-footer-area">
+                <div class="total-section">
+                    <span>Total Amount</span>
+                    <div class="price" id="contract-price">$0</div>
+                </div>
+
+                <div class="signature-area">
+                    <p>Authorized Signature</p>
+                    <div class="signature">Premium Rental</div>
+                </div>
+            </div>
+
+            <div class="legal-text">
+                * By signing this document, the renter agrees to all terms and conditions regarding vehicle safety and
+                return policies.
+            </div>
+        </div>
+    </div>
+
+    <div id="notification-container"></div>
+    <script src="script.js"></script>
+</body>
+
+</html>
