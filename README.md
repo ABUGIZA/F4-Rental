@@ -126,3 +126,15 @@ This resource is free to use and redistribute. Resale is not permitted.
 ## 💬 Support
 
 For support, please open an issue on GitHub or contact the author
+
+## 🔧 Fixed Issues
+
+| Issue | Status |
+|-------|--------|
+| Vehicle duplication after server restart | ✅ Fixed |
+| Multiple rentals bypass after disconnect | ✅ Fixed |
+| Retrieve spawning duplicate vehicles | ✅ Fixed |
+| Return not updating database | ✅ Fixed |
+
+### Demo Video
+[![Demo](https://img.shields.io/badge/Watch-Demo-red)](https://streamable.com/6n4poh)

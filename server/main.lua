@@ -31,7 +31,13 @@ Bridge.CreateCallback('F4-Rental:server:rentVehicle', function(source, data)
     end
 
     if not Config.AllowMultipleRentals then
-        if activeRentals[source] and #activeRentals[source] > 0 then
+        local existingRentals = MySQL.scalar.await([[
+            SELECT COUNT(*) FROM rental_history 
+            WHERE citizenid = ? AND status = 'active' AND end_date > NOW()
+        ]], { identifier })
+        
+        if existingRentals and existingRentals > 0 then
+            DebugPrint('rentVehicle BLOCKED - Player already has', existingRentals, 'active rentals in database')
             return { success = false, message = 'You already have an active rental' }
         end
     end
@@ -162,38 +168,53 @@ Bridge.CreateCallback('F4-Rental:server:returnVehicle', function(source, data)
         return { success = false, message = 'Invalid rental' }
     end
 
-    local rental = nil
-    local rentalIndex = nil
-
-    if activeRentals[source] then
-        for i, r in ipairs(activeRentals[source]) do
-            if r.id == data.rentalId then
-                rental = r
-                rentalIndex = i
-                break
-            end
-        end
-    end
+    local rental = MySQL.single.await([[
+        SELECT id, rental_price, payment_method, start_date, end_date,
+               UNIX_TIMESTAMP(end_date) as end_timestamp
+        FROM rental_history 
+        WHERE id = ? AND citizenid = ? AND status = 'active'
+    ]], { data.rentalId, identifier })
 
     if not rental then
+        DebugPrint('returnVehicle FAILED - Rental not found in database')
         return { success = false, message = 'Rental not found' }
     end
 
     local refund = 0
     if Config.RefundOnReturn then
-        local timeRemaining = rental.endTime - os.time()
+        local timeRemaining = (rental.end_timestamp or 0) - os.time()
         if timeRemaining > 0 then
-            local totalDuration = rental.duration * 24 * 60 * 60
-            local percentRemaining = timeRemaining / totalDuration
-            refund = math.floor(rental.totalPrice * percentRemaining * (Config.RefundPercentage / 100))
+            local startTimestamp = MySQL.scalar.await('SELECT UNIX_TIMESTAMP(?)', { rental.start_date })
+            local totalDuration = (rental.end_timestamp or 0) - (startTimestamp or 0)
+            if totalDuration > 0 then
+                local percentRemaining = timeRemaining / totalDuration
+                refund = math.floor((rental.rental_price or 0) * percentRemaining * (Config.RefundPercentage / 100))
 
-            if refund > 0 then
-                Bridge.AddMoney(source, rental.paymentMethod, refund, 'Car rental refund')
+                if refund > 0 then
+                    Bridge.AddMoney(source, rental.payment_method or 'cash', refund, 'Car rental refund')
+                end
             end
         end
     end
 
-    table.remove(activeRentals[source], rentalIndex)
+    MySQL.update.await([[
+        DELETE FROM rental_history WHERE id = ?
+    ]], { data.rentalId })
+    
+    DebugPrint('returnVehicle SUCCESS - Rental', data.rentalId, 'deleted from database')
+
+    if spawnedRentalVehicles[data.rentalId] then
+        spawnedRentalVehicles[data.rentalId] = nil
+    end
+
+    if activeRentals[source] then
+        for i, r in ipairs(activeRentals[source]) do
+            if r.id == data.rentalId then
+                table.remove(activeRentals[source], i)
+                break
+            end
+        end
+    end
 
     return {
         success = true,
@@ -295,8 +316,17 @@ Bridge.CreateCallback('F4-Rental:server:retrieveRentalVehicle', function(source,
     end
     
     if spawnedRentalVehicles[data.rentalId] then
-        DebugPrint('retrieveRentalVehicle FAILED - Vehicle already spawned')
+        DebugPrint('retrieveRentalVehicle FAILED - Vehicle already spawned (memory)')
         return { success = false, message = 'Vehicle is outside. Search for it!', isSpawned = true }
+    end
+    
+    local isSpawnedInDb = MySQL.scalar.await([[
+        SELECT vehicle_spawned FROM rental_history WHERE id = ? AND citizenid = ?
+    ]], { data.rentalId, identifier })
+    
+    if isSpawnedInDb and isSpawnedInDb == 1 then
+        DebugPrint('retrieveRentalVehicle FAILED - Vehicle already spawned (database)')
+        return { success = false, message = 'Vehicle is already outside. Search for it!', isSpawned = true }
     end
     
     local rental = MySQL.single.await([[
