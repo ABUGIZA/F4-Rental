@@ -132,13 +132,20 @@ if IsDuplicityVersion() then
         TriggerClientEvent('QBCore:Notify', source, msg, type)
     end
 
-    function Bridge.CreateCallback(name, cb)
-        if GetResourceState('ox_lib') == 'started' then
-            lib.callback.register(name, cb)
-        else
-            QBCore.Functions.CreateCallback(name, cb)
-        end
+function Bridge.CreateCallback(name, cb)
+    if GetResourceState('ox_lib') == 'started' then
+        lib.callback.register(name, cb)
+    else
+        QBCore.Functions.CreateCallback(name, function(source, callbackFn, ...)
+            -- Collect all arguments into a table
+            local args = {...}
+            -- If first arg is already a table, use it directly
+            local data = type(args[1]) == 'table' and args[1] or args
+            local result = cb(source, data)
+            callbackFn(result)
+        end)
     end
+end
 
     function Bridge.GetJob(source)
         local player = Bridge.GetPlayer(source)

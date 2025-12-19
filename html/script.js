@@ -288,9 +288,9 @@ function updateStat(statName, value) {
 function updateTotalPrice() {
     if (!currentVehicle || !selectedDuration) return;
 
-    const hours = selectedDuration.hours || 24;
-    const hourlyRate = currentVehicle.price / 24;
-    const total = Math.round(hourlyRate * hours);
+    const minutes = selectedDuration.minutes || 60;
+    const minuteRate = currentVehicle.price / 24 / 60;
+    const total = Math.round(minuteRate * minutes);
 
     el.totalPrice.querySelector('span').textContent = `$${total}`;
 }
@@ -395,7 +395,7 @@ el.confirmBtn?.addEventListener('click', () => {
 
     post('confirmRental', {
         model: currentVehicle.model,
-        duration: selectedDuration.hours || selectedDuration.days * 24,
+        duration: selectedDuration.minutes || 60,
         paymentMethod: selectedPayment.id,
         locationIndex: locationIndex,
     }).catch(() => { }).finally(() => {

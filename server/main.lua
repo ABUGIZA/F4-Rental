@@ -1,5 +1,4 @@
 local activeRentals = {}
-local rentalIdCounter = 0
 local spawnedRentalVehicles = {}
 local warnedRentals = {}
 local lastFeeApplied = {}
@@ -17,7 +16,28 @@ Bridge.CreateCallback('F4-Rental:server:getMoney', function(source, moneyType)
 end)
 
 Bridge.CreateCallback('F4-Rental:server:rentVehicle', function(source, data)
-    DebugPrint('rentVehicle callback - Player:', source, 'Model:', data.model, 'Duration:', data.duration, 'Price:', data.totalPrice)
+    -- Clean the data - remove client-side info that shouldn't be here
+    local cleanData = {
+        model = data.model,
+        duration = data.duration,
+        paymentMethod = data.paymentMethod,
+        totalPrice = data.totalPrice,
+        locationIndex = data.locationIndex
+    }
+    
+    if type(cleanData.model) ~= 'string' then
+        DebugPrint('rentVehicle FAILED - Invalid data format')
+        return { success = false, message = 'Invalid request format' }
+    end
+
+    DebugPrint('=== CLEANED DATA ===')
+    DebugPrint('Model:', cleanData.model)
+    DebugPrint('Duration:', cleanData.duration)
+    DebugPrint('Payment:', cleanData.paymentMethod)
+    DebugPrint('Price:', cleanData.totalPrice)
+    DebugPrint('Location:', cleanData.locationIndex)
+    DebugPrint('====================')
+
     local identifier = Bridge.GetIdentifier(source)
 
     if not identifier or identifier == '' then
@@ -25,11 +45,55 @@ Bridge.CreateCallback('F4-Rental:server:rentVehicle', function(source, data)
         return { success = false, message = 'Player not found' }
     end
 
-    if not data.model or not data.duration or not data.paymentMethod or not data.totalPrice then
-        DebugPrint('rentVehicle FAILED - Invalid rental data')
+    -- Validate required fields
+    if not cleanData.model or not cleanData.duration or not cleanData.paymentMethod or not cleanData.totalPrice then
+        DebugPrint('rentVehicle FAILED - Missing required data')
         return { success = false, message = 'Invalid rental data' }
     end
 
+    -- Find vehicle config
+    local vehicleConfig = nil
+    for _, v in ipairs(Config.Vehicles) do
+        if v.model == cleanData.model then
+            vehicleConfig = v
+            break
+        end
+    end
+
+    if not vehicleConfig then
+        DebugPrint('rentVehicle FAILED - Invalid vehicle model:', cleanData.model)
+        return { success = false, message = 'Invalid vehicle model' }
+    end
+
+    -- Validate duration (now using minutes as primary field)
+    local validDuration = nil
+    for _, d in ipairs(Config.RentalDurations) do
+        if d.minutes == cleanData.duration then
+            validDuration = d
+            break
+        end
+    end
+
+    if not validDuration then
+        DebugPrint('rentVehicle FAILED - Invalid duration:', cleanData.duration)
+        return { success = false, message = 'Invalid rental duration' }
+    end
+
+    -- Validate price (using minutes)
+    local expectedPrice = math.floor((vehicleConfig.price / 24 / 60) * validDuration.minutes)
+    if math.abs(cleanData.totalPrice - expectedPrice) > 1 then
+        DebugPrint('rentVehicle FAILED - Price mismatch. Expected:', expectedPrice, 'Got:', cleanData.totalPrice)
+        return { success = false, message = 'Price validation failed' }
+    end
+
+    -- Validate location index
+    local locationIndex = tonumber(cleanData.locationIndex)
+    if not locationIndex or locationIndex < 1 or locationIndex > #Config.Locations then
+        DebugPrint('rentVehicle WARNING - Invalid locationIndex, using default 1')
+        locationIndex = 1
+    end
+
+    -- Check for existing rentals
     if not Config.AllowMultipleRentals then
         local existingRentals = MySQL.scalar.await([[
             SELECT COUNT(*) FROM rental_history 
@@ -37,125 +101,139 @@ Bridge.CreateCallback('F4-Rental:server:rentVehicle', function(source, data)
         ]], { identifier })
         
         if existingRentals and existingRentals > 0 then
-            DebugPrint('rentVehicle BLOCKED - Player already has', existingRentals, 'active rentals in database')
+            DebugPrint('rentVehicle BLOCKED - Player has active rentals')
             return { success = false, message = 'You already have an active rental' }
         end
     end
 
-    local playerMoney = Bridge.GetMoney(source, data.paymentMethod)
-    if playerMoney < data.totalPrice then
+    -- Check player money
+    local playerMoney = Bridge.GetMoney(source, cleanData.paymentMethod)
+    if playerMoney < cleanData.totalPrice then
+        DebugPrint('rentVehicle FAILED - Insufficient funds')
         return { success = false, message = 'Insufficient funds' }
     end
 
-    local success = Bridge.RemoveMoney(source, data.paymentMethod, data.totalPrice, 'Car rental - ' .. data.model)
-    if not success then
+    -- Remove money
+    local paymentSuccess = Bridge.RemoveMoney(source, cleanData.paymentMethod, cleanData.totalPrice, 'Car rental - ' .. vehicleConfig.label)
+    if not paymentSuccess then
+        DebugPrint('rentVehicle FAILED - Payment removal failed')
         return { success = false, message = 'Payment failed' }
     end
 
-    local vehicleLabel = data.model
-    for _, v in ipairs(Config.Vehicles) do
-        if v.model == data.model then
-            vehicleLabel = v.label
-            break
-        end
-    end
-
+    -- Calculate times (using minutes)
     local startTime = os.time()
-    local rentalHours = data.duration or 24
-
-    local validHours = false
-    for _, d in ipairs(Config.RentalDurations) do
-        if d.hours == rentalHours then
-            validHours = true
-            break
-        end
-    end
-    
-    if not validHours then
-        rentalHours = 24
-    end
-    
-    local durationSeconds = rentalHours * 60 * 60
+    local durationSeconds = validDuration.minutes * 60
     local endTime = startTime + durationSeconds
     local startDate = os.date('%Y-%m-%d %H:%M:%S', startTime)
     local endDate = os.date('%Y-%m-%d %H:%M:%S', endTime)
 
+    DebugPrint('=== SQL INSERT ===')
+    DebugPrint('citizenid:', identifier)
+    DebugPrint('model:', vehicleConfig.model)
+    DebugPrint('label:', vehicleConfig.label)
+    DebugPrint('price:', cleanData.totalPrice)
+    DebugPrint('payment:', cleanData.paymentMethod)
+    DebugPrint('start:', startDate)
+    DebugPrint('end:', endDate)
+    DebugPrint('location:', locationIndex)
+    DebugPrint('==================')
+
+    -- Insert into database
     local dbId = MySQL.insert.await([[
         INSERT INTO rental_history 
         (citizenid, vehicle_model, vehicle_label, rental_price, payment_method, start_date, end_date, location_index, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')
-    ]], { identifier, data.model, vehicleLabel, data.totalPrice, data.paymentMethod, startDate, endDate, data.locationIndex or 1 })
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ]], { 
+        identifier, 
+        vehicleConfig.model, 
+        vehicleConfig.label, 
+        cleanData.totalPrice, 
+        cleanData.paymentMethod, 
+        startDate, 
+        endDate, 
+        locationIndex,
+        'active'
+    })
 
-    rentalIdCounter = rentalIdCounter + 1
-    local rentalId = dbId or rentalIdCounter
+    if not dbId then
+        DebugPrint('❌ Database insert FAILED - Refunding money')
+        Bridge.AddMoney(source, cleanData.paymentMethod, cleanData.totalPrice, 'Rental refund - DB error')
+        return { success = false, message = 'Database error, payment refunded' }
+    end
 
+    -- Create rental object
     local rental = {
-        id = rentalId,
+        id = dbId,
         identifier = identifier,
-        model = data.model,
-        label = vehicleLabel,
-        duration = data.duration,
-        totalPrice = data.totalPrice,
-        paymentMethod = data.paymentMethod,
-        locationIndex = data.locationIndex,
+        model = cleanData.model,
+        label = vehicleConfig.label,
+        duration = cleanData.duration,
+        totalPrice = cleanData.totalPrice,
+        paymentMethod = cleanData.paymentMethod,
+        locationIndex = locationIndex,
         startTime = startTime,
         endTime = endTime,
         startDate = startDate,
         endDate = endDate,
     }
 
+    -- Store in active rentals
     if not activeRentals[source] then
         activeRentals[source] = {}
     end
     table.insert(activeRentals[source], rental)
     
-    DebugPrint(('New rental created - ID: %d, Player: %s, Model: %s, Duration: %dh, Price: $%d'):format(
-        rentalId, identifier, data.model, data.duration, data.totalPrice
+    DebugPrint(('✅ Rental #%d created - %s (%dm) for $%d'):format(
+        dbId, vehicleConfig.label, cleanData.duration, cleanData.totalPrice
     ))
 
+    -- Give rental contract
     if GetResourceState('ox_inventory') == 'started' then
-        local contractMetadata = {
-            label = 'Rental Contract - ' .. vehicleLabel,
-            description = 'Rental contract for ' .. vehicleLabel,
-            rentalId = rentalId,
+        exports.ox_inventory:AddItem(source, 'rental_contract', 1, {
+            label = 'Rental Contract - ' .. vehicleConfig.label,
+            description = 'Rental contract for ' .. vehicleConfig.label,
+            rentalId = dbId,
             citizenid = identifier,
-            vehicle = vehicleLabel,
-            model = data.model,
-            price = data.totalPrice,
-            duration = data.duration,
-            paymentMethod = data.paymentType or 'cash',
+            vehicle = vehicleConfig.label,
+            model = cleanData.model,
+            price = cleanData.totalPrice,
+            duration = cleanData.duration,
+            paymentMethod = cleanData.paymentMethod,
             startDate = os.date('%d/%m/%Y %H:%M', startTime),
             endDate = os.date('%d/%m/%Y %H:%M', endTime),
-        }
-        exports.ox_inventory:AddItem(source, 'rental_contract', 1, contractMetadata)
+        })
     elseif GetResourceState('qb-inventory') == 'started' or GetResourceState('qs-inventory') == 'started' then
-        local Player = exports.qbx_core:GetPlayer(source)
+        local Player = Bridge.GetPlayer(source)
         if Player then
-            local contractInfo = {
-                rentalId = rentalId,
+            Player.Functions.AddItem('rental_contract', 1, false, {
+                rentalId = dbId,
                 citizenid = identifier,
-                vehicle = vehicleLabel,
-                model = data.model,
-                price = data.totalPrice,
-                duration = data.duration,
+                vehicle = vehicleConfig.label,
+                model = cleanData.model,
+                price = cleanData.totalPrice,
+                duration = cleanData.duration,
                 startDate = os.date('%d/%m/%Y %H:%M', startTime),
                 endDate = os.date('%d/%m/%Y %H:%M', endTime),
-            }
-            Player.Functions.AddItem('rental_contract', 1, false, contractInfo)
-            TriggerClientEvent('inventory:client:ItemBox', source, exports.qbx_core:GetItems()['rental_contract'], 'add')
+            })
         end
     end
 
-    Bridge.Notify(source, 'Vehicle rented successfully!', 'success')
+    local durationText = cleanData.duration >= 60 and (cleanData.duration / 60) .. 'h' or cleanData.duration .. 'min'
+    Bridge.Notify(source, 'Vehicle rented successfully! Duration: ' .. durationText, 'success')
 
     return {
         success = true,
-        rentalId = rentalId,
+        rentalId = dbId,
+        rental = rental,
         message = 'Rental confirmed'
     }
 end)
 
 Bridge.CreateCallback('F4-Rental:server:returnVehicle', function(source, data)
+    if type(data) ~= 'table' then
+        return { success = false, message = 'Invalid request format' }
+    end
+
     DebugPrint('returnVehicle callback - Player:', source, 'RentalID:', data.rentalId)
     local identifier = Bridge.GetIdentifier(source)
 
@@ -230,29 +308,26 @@ Bridge.CreateCallback('F4-Rental:server:checkRentals', function(source)
         return nil
     end
 
-    local rentals = activeRentals[source]
+    local rentals = MySQL.query.await([[
+        SELECT id, vehicle_model, vehicle_label, 
+               UNIX_TIMESTAMP(end_date) as end_timestamp,
+               UNIX_TIMESTAMP(NOW()) as now_ts
+        FROM rental_history 
+        WHERE citizenid = ? AND status = 'active'
+    ]], { identifier })
+
     if not rentals or #rentals == 0 then
         return nil
     end
 
     local result = {}
-    local currentTime = os.time()
-
     for _, rental in ipairs(rentals) do
-        local timeLeft = math.floor((rental.endTime - currentTime) / 60)
-
-        local label = rental.model
-        for _, v in ipairs(Config.Vehicles) do
-            if v.model == rental.model then
-                label = v.label
-                break
-            end
-        end
+        local timeLeft = math.floor((rental.end_timestamp - rental.now_ts) / 60)
 
         table.insert(result, {
             id = rental.id,
-            model = rental.model,
-            label = label,
+            model = rental.vehicle_model,
+            label = rental.vehicle_label,
             timeLeft = timeLeft,
             expired = timeLeft <= 0,
         })
@@ -302,6 +377,10 @@ Bridge.CreateCallback('F4-Rental:server:getActiveRentals', function(source)
 end)
 
 Bridge.CreateCallback('F4-Rental:server:retrieveRentalVehicle', function(source, data)
+    if type(data) ~= 'table' then
+        return { success = false, message = 'Invalid request format' }
+    end
+
     DebugPrint('retrieveRentalVehicle callback - Player:', source, 'RentalID:', data.rentalId)
     local identifier = Bridge.GetIdentifier(source)
     
@@ -363,7 +442,7 @@ Bridge.CreateCallback('F4-Rental:server:retrieveRentalVehicle', function(source,
         label = rental.vehicle_label,
         plate = plate,
         rentalId = rental.id,
-        locationIndex = rental.location_index or data.locationIndex
+        locationIndex = rental.location_index or tonumber(data.locationIndex) or 1
     }
 end)
 
@@ -431,6 +510,17 @@ Bridge.CreateCallback('F4-Rental:server:getReturnLocation', function(source, ren
 end)
 
 RegisterNetEvent('F4-Rental:server:vehicleStored', function(rentalId)
+    local source = source
+    local identifier = Bridge.GetIdentifier(source)
+    
+    if not identifier or identifier == '' then return end
+    
+    local rental = MySQL.single.await('SELECT citizenid FROM rental_history WHERE id = ?', { rentalId })
+    if not rental or rental.citizenid ~= identifier then
+        DebugPrint('vehicleStored BLOCKED - Ownership validation failed for rental', rentalId)
+        return
+    end
+    
     if spawnedRentalVehicles[rentalId] then
         spawnedRentalVehicles[rentalId] = nil
         
@@ -444,6 +534,15 @@ end)
 
 RegisterNetEvent('F4-Rental:server:saveVehiclePosition', function(rentalId, coords, heading, props)
     local source = source
+    local identifier = Bridge.GetIdentifier(source)
+    
+    if not identifier or identifier == '' then return end
+    
+    local rental = MySQL.single.await('SELECT citizenid FROM rental_history WHERE id = ?', { rentalId })
+    if not rental or rental.citizenid ~= identifier then
+        DebugPrint('saveVehiclePosition BLOCKED - Ownership validation failed for rental', rentalId)
+        return
+    end
     
     if spawnedRentalVehicles[rentalId] and spawnedRentalVehicles[rentalId].source == source then
         local coordsJson = json.encode(coords)

@@ -161,7 +161,10 @@ if IsDuplicityVersion() then
         if GetResourceState('ox_lib') == 'started' then
             lib.callback.register(name, cb)
         else
-            ESX.RegisterServerCallback(name, cb)
+            ESX.RegisterServerCallback(name, function(source, callbackFn, data)
+                local result = cb(source, data)
+                callbackFn(result)
+            end)
         end
     end
 

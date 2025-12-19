@@ -91,9 +91,30 @@ function InitializeLocation(index, location)
     end
 end
 
-RegisterNetEvent('F4-Rental:client:openMenu', function(locationIndex)
+RegisterNetEvent('F4-Rental:client:openMenu', function(data)
     if IsUIOpen() then return end
-    currentLocation = locationIndex or 1
+    
+    local locationIndex = 1
+    
+    if type(data) == 'number' then
+        locationIndex = data
+    elseif type(data) == 'table' then
+        local rawIndex = data.locationIndex
+        
+        if type(rawIndex) == 'number' then
+            locationIndex = rawIndex
+        elseif type(rawIndex) == 'table' and rawIndex.locationIndex then
+            locationIndex = tonumber(rawIndex.locationIndex) or 1
+        else
+            locationIndex = tonumber(rawIndex) or 1
+        end
+    end
+    
+    if Config.Debug then
+        print('[F4-Rental Client] openMenu - Type:', type(data), 'locationIndex:', locationIndex)
+    end
+    
+    currentLocation = locationIndex
     OpenRentalUI(currentLocation)
 end)
 

@@ -32,7 +32,7 @@ function OpenRentalUI(locationIndex, vehicleData)
             days = d.days,
             label = d.label,
             multiplier = d.multiplier,
-            hours = d.hours or (d.days * 24),
+            minutes = d.minutes,
         }
     end
 
@@ -105,10 +105,12 @@ RegisterNUICallback('confirmRental', function(data, cb)
         return
     end
 
-    local hours = data.duration or 24
-    local hourlyRate = vehicleConfig.price / 24
-    local totalPrice = math.floor(hourlyRate * hours)
-    DebugPrint('confirmRental - Price calculated:', totalPrice, 'Hours:', hours)
+    local minutes = data.duration or 60
+    local minuteRate = vehicleConfig.price / 24 / 60
+    local totalPrice = math.floor(minuteRate * minutes)
+    DebugPrint('confirmRental - Price calculated:', totalPrice, 'Minutes:', minutes)
+
+    local validLocationIndex = tonumber(data.locationIndex) or 1
 
     Bridge.TriggerCallback('F4-Rental:server:rentVehicle', function(result)
         if result.success then
@@ -116,7 +118,7 @@ RegisterNUICallback('confirmRental', function(data, cb)
             SetNuiFocus(false, false)
             SendNUIMessage({ action = 'close' })
 
-            local currentLocation = Config.Locations[data.locationIndex or 1]
+            local currentLocation = Config.Locations[validLocationIndex]
             if currentLocation then
                 local spawnCoords = currentLocation.spawnPoint
                 local vehicle = Utils.SpawnVehicle(data.model, spawnCoords)
@@ -131,9 +133,10 @@ RegisterNUICallback('confirmRental', function(data, cb)
 
                     TaskWarpPedIntoVehicle(PlayerPedId(), vehicle, -1)
 
+                    local durationText = data.duration >= 60 and (data.duration / 60) .. ' hour(s)' or data.duration .. ' minute(s)'
                     Bridge.AdvancedNotify(
                         '🚗 Rental Confirmed',
-                        'You rented ' .. vehicleConfig.label .. ' for ' .. data.duration .. ' hour(s)',
+                        'You rented ' .. vehicleConfig.label .. ' for ' .. durationText,
                         'success'
                     )
                 else
@@ -150,7 +153,7 @@ RegisterNUICallback('confirmRental', function(data, cb)
         duration = data.duration,
         paymentMethod = data.paymentMethod,
         totalPrice = totalPrice,
-        locationIndex = data.locationIndex or 1,
+        locationIndex = validLocationIndex,
     })
 end)
 
@@ -207,9 +210,14 @@ RegisterNUICallback('retrieveVehicle', function(data, cb)
         return
     end
     
+    local validLocationIndex = tonumber(data.locationIndex) or 1
+    
     Bridge.TriggerCallback('F4-Rental:server:retrieveRentalVehicle', function(result)
         if result.success then
-            local locationIndex = data.locationIndex or result.locationIndex or 1
+            local locationIndex = validLocationIndex
+            if result.locationIndex and type(result.locationIndex) == 'number' then
+                locationIndex = result.locationIndex
+            end
             local location = Config.Locations[locationIndex]
             
             if not location then
@@ -250,7 +258,7 @@ RegisterNUICallback('retrieveVehicle', function(data, cb)
             end
             cb(result)
         end
-    end, { rentalId = data.rentalId, locationIndex = data.locationIndex })
+    end, { rentalId = data.rentalId, locationIndex = validLocationIndex })
 end)
 
 exports('OpenRentalUI', OpenRentalUI)

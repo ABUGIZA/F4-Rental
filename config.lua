@@ -100,15 +100,16 @@ Config.Vehicles = {
 -----------------------------------------------------------
 
 Config.RentalDurations = {
-    { days = 1, label = '1 Hour', multiplier = 0.5, hours = 1 },
-    { days = 1, label = '2 Hours', multiplier = 0.5, hours = 2 },
-    { days = 1, label = '3 Hours', multiplier = 0.5, hours = 3 },
-    { days = 1, label = '6 Hours', multiplier = 0.8, hours = 6 },
-    { days = 1, label = '12 Hours', multiplier = 1.0, hours = 12 },
-    { days = 1, label = '1 Day', multiplier = 1.5, hours = 24 },
-    { days = 2, label = '2 Days', multiplier = 2.5, hours = 48 },
-    { days = 3, label = '3 Days', multiplier = 3.5, hours = 72 },
-    { days = 7, label = '7 Days', multiplier = 6.0, hours = 168 },
+    { days = 1, label = '5 Minutes', multiplier = 0.5, minutes = 5 },
+    { days = 1, label = '1 Hour', multiplier = 0.5, minutes = 60 },
+    { days = 1, label = '2 Hours', multiplier = 0.5, minutes = 120 },
+    { days = 1, label = '3 Hours', multiplier = 0.5, minutes = 180 },
+    { days = 1, label = '6 Hours', multiplier = 0.8, minutes = 360 },
+    { days = 1, label = '12 Hours', multiplier = 1.0, minutes = 720 },
+    { days = 1, label = '1 Day', multiplier = 1.5, minutes = 1440 },
+    { days = 2, label = '2 Days', multiplier = 2.5, minutes = 2880 },
+    { days = 3, label = '3 Days', multiplier = 3.5, minutes = 4320 },
+    { days = 7, label = '7 Days', multiplier = 6.0, minutes = 10080 },
 }
 
 Config.PaymentMethods = {
