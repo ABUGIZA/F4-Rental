@@ -4,7 +4,7 @@ game 'gta5'
 name 'F4-Rental'
 author 'F4'
 description 'Professional Car Rental System'
-version '1.0.0'
+version '1.1.0'
 
 lua54 'yes'
 

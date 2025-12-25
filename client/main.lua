@@ -119,7 +119,33 @@ RegisterNetEvent('F4-Rental:client:openMenu', function(data)
 end)
 
 RegisterNetEvent('F4-Rental:client:returnVehicle', function(vehicle)
-    if not DoesEntityExist(vehicle) then return end
+    -- Validate entity parameter first
+    if not vehicle then
+        if Config.Debug then
+            print('[F4-Rental] returnVehicle: vehicle parameter is nil')
+        end
+        return
+    end
+
+    -- Convert to number if it's not already (some target systems pass strings)
+    if type(vehicle) == 'string' then
+        vehicle = tonumber(vehicle)
+    end
+
+    -- Check if valid entity handle
+    if type(vehicle) ~= 'number' or vehicle == 0 then
+        if Config.Debug then
+            print('[F4-Rental] returnVehicle: invalid vehicle handle:', vehicle)
+        end
+        return
+    end
+
+    if not DoesEntityExist(vehicle) then
+        if Config.Debug then
+            print('[F4-Rental] returnVehicle: vehicle entity does not exist:', vehicle)
+        end
+        return
+    end
 
     local isRental = Entity(vehicle).state.rentalVehicle
     if not isRental then
@@ -528,6 +554,16 @@ function FindVehicleByPlate(plate)
     end
     return nil
 end
+
+-- Event to register a rented vehicle from NUI
+RegisterNetEvent('F4-Rental:client:registerRentedVehicle', function(rentalId, vehicle)
+    if rentalId and vehicle and DoesEntityExist(vehicle) then
+        rentedVehicles[rentalId] = vehicle
+        if Config.Debug then
+            print('[F4-Rental] Registered rented vehicle:', rentalId, vehicle)
+        end
+    end
+end)
 
 exports('GetRentedVehicles', function()
     return rentedVehicles

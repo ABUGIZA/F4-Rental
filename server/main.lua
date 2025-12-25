@@ -230,7 +230,12 @@ Bridge.CreateCallback('F4-Rental:server:rentVehicle', function(source, data)
 end)
 
 Bridge.CreateCallback('F4-Rental:server:returnVehicle', function(source, data)
+    DebugPrint('=== returnVehicle DEBUG ===')
+    DebugPrint('Data type:', type(data))
+    DebugPrint('Data:', json.encode(data or {}))
+
     if type(data) ~= 'table' then
+        DebugPrint('returnVehicle FAILED - Invalid data type:', type(data))
         return { success = false, message = 'Invalid request format' }
     end
 
@@ -275,12 +280,27 @@ Bridge.CreateCallback('F4-Rental:server:returnVehicle', function(source, data)
         end
     end
 
-    MySQL.update.await([[
-        DELETE FROM rental_history WHERE id = ?
-    ]], { data.rentalId })
-    
-    DebugPrint('returnVehicle SUCCESS - Rental', data.rentalId, 'deleted from database')
+    -- Delete rental from database
+    DebugPrint('Attempting DELETE - RentalID:', data.rentalId, 'CitizenID:', identifier)
 
+    local result = MySQL.query.await([[
+        DELETE FROM rental_history WHERE id = ? AND citizenid = ?
+    ]], { data.rentalId, identifier })
+
+    DebugPrint('DELETE result type:', type(result))
+    DebugPrint('DELETE result:', json.encode(result or {}))
+
+    local affectedRows = type(result) == 'number' and result or (type(result) == 'table' and result.affectedRows or 0)
+    DebugPrint('Affected rows:', affectedRows)
+
+    if not affectedRows or affectedRows == 0 then
+        DebugPrint('returnVehicle FAILED - Database delete failed, no rows affected')
+        return { success = false, message = 'Failed to delete rental' }
+    end
+
+    DebugPrint('returnVehicle SUCCESS - Rental', data.rentalId, 'deleted from database (', affectedRows, 'rows)')
+
+    -- Clean up memory
     if spawnedRentalVehicles[data.rentalId] then
         spawnedRentalVehicles[data.rentalId] = nil
     end
@@ -292,6 +312,15 @@ Bridge.CreateCallback('F4-Rental:server:returnVehicle', function(source, data)
                 break
             end
         end
+    end
+
+    -- Clear warning flags
+    if warnedRentals[data.rentalId] then
+        warnedRentals[data.rentalId] = nil
+    end
+
+    if lastFeeApplied[data.rentalId] then
+        lastFeeApplied[data.rentalId] = nil
     end
 
     return {
@@ -559,19 +588,24 @@ end)
 RegisterNetEvent('F4-Rental:server:vehicleReturned', function(rentalId)
     local source = source
     local identifier = Bridge.GetIdentifier(source)
-    
+
     if not rentalId then return end
-    
-    MySQL.update.await([[
-        UPDATE rental_history 
-        SET status = 'returned', returned_at = NOW(), vehicle_spawned = 0, vehicle_coords = NULL
-        WHERE id = ? AND citizenid = ?
+
+    -- Delete rental from database (auto-return at location)
+    DebugPrint('vehicleReturned - Attempting DELETE - RentalID:', rentalId, 'CitizenID:', identifier)
+
+    local result = MySQL.query.await([[
+        DELETE FROM rental_history WHERE id = ? AND citizenid = ?
     ]], { rentalId, identifier })
-    
+
+    DebugPrint('vehicleReturned - DELETE result:', type(result), json.encode(result or {}))
+    DebugPrint('vehicleReturned - Rental #' .. rentalId .. ' deleted from database')
+
+    -- Clean up memory
     if spawnedRentalVehicles[rentalId] then
         spawnedRentalVehicles[rentalId] = nil
     end
-    
+
     if activeRentals[source] then
         for i, r in ipairs(activeRentals[source]) do
             if r.id == rentalId then
@@ -579,6 +613,15 @@ RegisterNetEvent('F4-Rental:server:vehicleReturned', function(rentalId)
                 break
             end
         end
+    end
+
+    -- Clear warning flags
+    if warnedRentals[rentalId] then
+        warnedRentals[rentalId] = nil
+    end
+
+    if lastFeeApplied[rentalId] then
+        lastFeeApplied[rentalId] = nil
     end
 end)
 
@@ -620,60 +663,65 @@ local function ApplyLateFee(source, rental)
     end
     
     lastFeeApplied[rentalKey] = currentTime
-    
-    local playerMoney = Bridge.GetMoney(source, 'bank')
+
     local feeAmount = Config.LateFee
-    
-    if playerMoney >= feeAmount then
-        Bridge.RemoveMoney(source, 'bank', feeAmount, 'Rental late fee - ' .. rental.vehicle_label)
-        
-        local newTotal = (rental.late_fee_total or 0) + feeAmount
-        MySQL.update.await([[
-            UPDATE rental_history 
-            SET late_fee_total = ?, last_fee_time = NOW() 
-            WHERE id = ?
-        ]], { newTotal, rental.id })
-        
-        local location = Config.Locations[rental.location_index or 1]
-        
-        TriggerClientEvent('F4-Rental:client:lateFeeApplied', source, {
-            rentalId = rental.id,
-            label = rental.vehicle_label,
-            feeAmount = feeAmount,
-            totalFees = newTotal,
-            returnLocation = location and {
-                coords = { x = location.coords.x, y = location.coords.y, z = location.coords.z },
-                name = location.name,
-                returnRadius = location.returnRadius or 15.0
-            } or nil
-        })
-    else
-        Bridge.Notify(source, 'You cannot afford the late fee! Return your rental vehicle immediately.', 'error')
-        
-        local location = Config.Locations[rental.location_index or 1]
-        TriggerClientEvent('F4-Rental:client:forceReturn', source, {
-            rentalId = rental.id,
-            label = rental.vehicle_label,
-            returnLocation = location and {
-                coords = { x = location.coords.x, y = location.coords.y, z = location.coords.z },
-                name = location.name
-            } or nil
-        })
+    local playerMoney = Bridge.GetMoney(source, 'bank')
+
+    -- Always remove money (allows negative balance)
+    Bridge.RemoveMoney(source, 'bank', feeAmount, 'Rental late fee - ' .. rental.vehicle_label)
+
+    local newTotal = (rental.late_fee_total or 0) + feeAmount
+    MySQL.update.await([[
+        UPDATE rental_history
+        SET late_fee_total = ?, last_fee_time = NOW()
+        WHERE id = ?
+    ]], { newTotal, rental.id })
+
+    local location = Config.Locations[rental.location_index or 1]
+
+    -- Notify player about late fee (works even with negative balance)
+    TriggerClientEvent('F4-Rental:client:lateFeeApplied', source, {
+        rentalId = rental.id,
+        label = rental.vehicle_label,
+        feeAmount = feeAmount,
+        totalFees = newTotal,
+        returnLocation = location and {
+            coords = { x = location.coords.x, y = location.coords.y, z = location.coords.z },
+            name = location.name,
+            returnRadius = location.returnRadius or 15.0
+        } or nil
+    })
+
+    -- Warn player if balance is now negative
+    local newBalance = playerMoney - feeAmount
+    if newBalance < 0 then
+        Bridge.Notify(source, ('⚠️ Late fee applied: $%d | Your balance is now: $%d'):format(feeAmount, newBalance), 'error')
     end
 end
 
 local function AutoTerminateRental(rental)
-    MySQL.update.await([[
-        UPDATE rental_history 
-        SET status = 'expired', vehicle_spawned = 0, vehicle_coords = NULL 
-        WHERE id = ?
+    -- Delete rental from database (offline players, no late fees)
+    DebugPrint('AutoTerminate - Attempting DELETE - RentalID:', rental.id)
+
+    local result = MySQL.query.await([[
+        DELETE FROM rental_history WHERE id = ?
     ]], { rental.id })
-    
+
+    DebugPrint('AutoTerminate - DELETE result:', type(result), json.encode(result or {}))
+    DebugPrint('AutoTerminate - Rental #' .. rental.id .. ' deleted (player offline)')
+
+    -- Clean up memory
     if spawnedRentalVehicles[rental.id] then
         spawnedRentalVehicles[rental.id] = nil
     end
-    
-    warnedRentals[rental.id] = nil
+
+    if warnedRentals[rental.id] then
+        warnedRentals[rental.id] = nil
+    end
+
+    if lastFeeApplied[rental.id] then
+        lastFeeApplied[rental.id] = nil
+    end
 end
 
 CreateThread(function()

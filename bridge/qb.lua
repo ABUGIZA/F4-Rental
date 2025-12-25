@@ -136,11 +136,8 @@ function Bridge.CreateCallback(name, cb)
     if GetResourceState('ox_lib') == 'started' then
         lib.callback.register(name, cb)
     else
-        QBCore.Functions.CreateCallback(name, function(source, callbackFn, ...)
-            -- Collect all arguments into a table
-            local args = {...}
-            -- If first arg is already a table, use it directly
-            local data = type(args[1]) == 'table' and args[1] or args
+        QBCore.Functions.CreateCallback(name, function(source, callbackFn, data)
+            -- QBCore passes data as first parameter (table)
             local result = cb(source, data)
             callbackFn(result)
         end)

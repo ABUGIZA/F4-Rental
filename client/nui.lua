@@ -127,6 +127,9 @@ RegisterNUICallback('confirmRental', function(data, cb)
                     Entity(vehicle).state:set('rentalVehicle', true, true)
                     Entity(vehicle).state:set('rentalId', result.rentalId, true)
 
+                    -- Register rented vehicle in main.lua
+                    TriggerEvent('F4-Rental:client:registerRentedVehicle', result.rentalId, vehicle)
+
                     if Config.GiveKeys then
                         Bridge.GiveKeys(vehicle)
                     end
@@ -226,24 +229,24 @@ RegisterNUICallback('retrieveVehicle', function(data, cb)
             end
             
             local vehicle = Utils.SpawnVehicle(result.model, location.spawnPoint)
-            
+
             if vehicle then
                 if result.plate then
                     SetVehicleNumberPlateText(vehicle, result.plate)
                 end
-                
+
                 Entity(vehicle).state:set('rentalVehicle', true, true)
                 Entity(vehicle).state:set('rentalId', result.rentalId, true)
-                
-                local rentedVehicles = exports['F4-Rental']:GetRentedVehicles()
-                rentedVehicles[result.rentalId] = vehicle
-                
+
+                -- Register rented vehicle in main.lua
+                TriggerEvent('F4-Rental:client:registerRentedVehicle', result.rentalId, vehicle)
+
                 if Config.GiveKeys and Bridge.GiveKeys then
                     Bridge.GiveKeys(vehicle)
                 end
-                
+
                 TaskWarpPedIntoVehicle(PlayerPedId(), vehicle, -1)
-                
+
                 Bridge.AdvancedNotify('✅ Vehicle Retrieved', 'Your ' .. result.label .. ' is ready!', 'success')
                 cb({ success = true })
             else

@@ -136,5 +136,63 @@ For support, please open an issue on GitHub or contact the author
 | Retrieve spawning duplicate vehicles | ✅ Fixed |
 | Return not updating database | ✅ Fixed |
 
-### Demo Video
-[![Demo](https://img.shields.io/badge/Watch-Demo-red)](https://streamable.com/6n4poh)
+## 🆕 Latest Updates (v1.1.0)
+
+### 🎥 Update Showcase
+[![Watch Update](https://img.shields.io/badge/Watch-Latest_Updates-brightgreen?style=for-the-badge&logo=youtube)](https://streamable.com/37awax)
+
+### ✅ Major Fixes & Improvements
+
+#### **Customer Reported Issues - RESOLVED**
+1. **DoesEntityExist Script Error (interact/sleepless_interact)**
+   - ✅ Fixed entity parameter validation in return vehicle event
+   - ✅ Added comprehensive type checking and conversion
+   - ✅ No more script errors when using target systems
+
+2. **Rental Data Not Deleting After Return**
+   - ✅ Changed database operation from UPDATE to DELETE
+   - ✅ Rentals now properly removed from database on return
+   - ✅ Clean database without leftover rental records
+
+3. **QBCore Callback Data Handling**
+   - ✅ Fixed callback bridge for QBCore framework
+   - ✅ Proper data passing between client and server
+   - ✅ DELETE operations now work correctly in QBCore
+
+#### **Late Fee System Enhancements**
+- 💰 **Negative Balance Support** - Late fees apply even with insufficient funds
+- 🔄 **Continuous Charging** - Fees continue until vehicle is returned
+- 🎯 **Smart Detection** - Only charges online players
+- 🗑️ **Auto-Cleanup** - Offline expired rentals are deleted without fees
+
+#### **Database Management**
+- 🗄️ **Clean Records** - All returns now DELETE instead of UPDATE status
+- 🚀 **Better Performance** - Fewer database records to query
+- 📊 **Accurate Tracking** - Only active rentals in database
+
+#### **Code Quality Improvements**
+- 🐛 **Enhanced Debugging** - Comprehensive debug logging for troubleshooting
+- ✅ **Better Validation** - Improved entity and data validation
+- 🔒 **Safer Operations** - Proper error handling and fallbacks
+
+### 📋 Technical Changes
+
+```lua
+// Before (Old Code)
+UPDATE rental_history SET status = 'returned' WHERE id = ?
+
+// After (New Code)
+DELETE FROM rental_history WHERE id = ? AND citizenid = ?
+```
+
+### 🎮 Player Experience
+- ✅ Smoother return process without errors
+- ✅ Clear balance warnings when going negative
+- ✅ Fair system: only online players pay late fees
+- ✅ Offline players don't accumulate charges
+
+---
+
+### Demo Videos
+[![Original Demo](https://img.shields.io/badge/Watch-Original_Demo-red)](https://streamable.com/6n4poh)
+[![Latest Update](https://img.shields.io/badge/Watch-Latest_Updates-brightgreen)](https://streamable.com/37awax)
