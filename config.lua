@@ -1,15 +1,8 @@
 Config = {}
------------------------------------------------------------
--- FRAMEWORK SETTINGS
------------------------------------------------------------
 
 Config.Framework = 'auto'      -- 'auto' | 'qb' | 'qbx' | 'esx'
 Config.TargetSystem = 'auto'   -- 'auto' | 'ox_target' | 'qb-target' | 'interact' | 'none'
 Config.NotifySystem = 'auto'   -- 'auto' | 'ox_lib' | 'framework'
-
------------------------------------------------------------
--- RENTAL LOCATIONS
------------------------------------------------------------
 
 Config.Locations = {
     {
@@ -33,10 +26,6 @@ Config.Locations = {
         },
     },
 }
-
------------------------------------------------------------
--- AVAILABLE VEHICLES
------------------------------------------------------------
 
 Config.Vehicles = {
     {
@@ -95,9 +84,6 @@ Config.Vehicles = {
     },
 }
 
------------------------------------------------------------
--- RENTAL DURATIONS
------------------------------------------------------------
 
 Config.RentalDurations = {
     { days = 1, label = '5 Minutes', multiplier = 0.5, minutes = 5 },
@@ -117,10 +103,6 @@ Config.PaymentMethods = {
     { id = 'cash', label = 'Cash', icon = 'fa-money-bill-wave' },
 }
 
------------------------------------------------------------
--- RENTAL RULES
------------------------------------------------------------
-
 Config.AllowMultipleRentals = false
 Config.ReturnAtAnyLocation = true
 Config.RefundOnReturn = true
@@ -128,17 +110,9 @@ Config.RefundPercentage = 50
 Config.DeleteVehicleOnExpiry = false
 Config.WarnBeforeExpiry = 5
 
------------------------------------------------------------
--- LATE FEE SETTINGS
------------------------------------------------------------
-
 Config.LateFee = 100
 Config.LateFeeInterval = 1
 Config.AutoTerminateOffline = true
-
------------------------------------------------------------
--- INTERACTION SETTINGS
------------------------------------------------------------
 
 Config.InteractionDistance = 2.5
 Config.UseBlips = true
@@ -146,16 +120,15 @@ Config.UsePeds = true
 Config.UseMarkers = false
 Config.InteractionKey = 38
 
------------------------------------------------------------
--- VEHICLE SETTINGS
------------------------------------------------------------
-
 Config.FuelLevel = 100
 Config.LockVehicle = false
 Config.GiveKeys = true
 
------------------------------------------------------------
--- DEBUG
------------------------------------------------------------
+-- When true: if a player disconnects, their rental vehicle respawns at the last
+-- known location when they reconnect and they receive the keys automatically.
+-- When false: the vehicle is stored back with the NPC on disconnect. The player
+-- must retrieve it again from the "My Rentals" menu on reconnect.
+Config.RespawnOnReconnect = true
 
-Config.Debug = true
+-- M6 Fix: Debug disabled by default for production
+Config.Debug = false

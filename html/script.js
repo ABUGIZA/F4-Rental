@@ -8,7 +8,16 @@ let currentVehicle = null;
 let selectedDuration = null;
 let selectedPayment = null;
 let locationIndex = 1;
-let favorites = JSON.parse(localStorage.getItem('rental_favorites') || '[]');
+let characterId = 'default';
+let favorites = [];
+
+function getFavoritesKey() {
+    return 'rental_favorites_' + characterId;
+}
+
+function loadFavorites() {
+    favorites = JSON.parse(localStorage.getItem(getFavoritesKey()) || '[]');
+}
 
 const el = {
     carGrid: $('#car-grid'),
@@ -77,6 +86,9 @@ function openUI(data) {
     durations = data.durations || [];
     payments = data.payments || [];
     locationIndex = data.locationIndex || 1;
+    // M5 Fix: scope favorites to character
+    characterId = data.characterId || 'default';
+    loadFavorites();
 
     selectedDuration = durations[0] || { days: 1, label: '1 Day', multiplier: 1.0 };
     selectedPayment = payments[0] || { id: 'bank', label: 'Bank Transfer', icon: 'fa-credit-card' };
@@ -290,7 +302,7 @@ function updateTotalPrice() {
 
     const minutes = selectedDuration.minutes || 60;
     const minuteRate = currentVehicle.price / 24 / 60;
-    const total = Math.round(minuteRate * minutes);
+    const total = Math.ceil(minuteRate * minutes);
 
     el.totalPrice.querySelector('span').textContent = `$${total}`;
 }
@@ -311,7 +323,7 @@ function toggleFavorite(model, icon) {
         icon.style.color = '#e67e22';
     }
 
-    localStorage.setItem('rental_favorites', JSON.stringify(favorites));
+    localStorage.setItem(getFavoritesKey(), JSON.stringify(favorites));
     filterVehicles();
 }
 
@@ -436,17 +448,24 @@ function openContract(data) {
 
     const durationEl = $('#contract-duration');
     if (durationEl) {
-        const hours = data.duration || 24;
+        // M1/M8 Fix: data.duration is in minutes, convert properly
+        const totalMinutes = Number(data.duration || 60);
+        const hours = Math.floor(totalMinutes / 60);
+        const mins = totalMinutes % 60;
+
         if (hours >= 24) {
             const days = Math.floor(hours / 24);
-            const remainingHours = hours % 24;
-            if (remainingHours > 0) {
-                durationEl.textContent = `${days} Day${days > 1 ? 's' : ''} ${remainingHours} Hour${remainingHours > 1 ? 's' : ''}`;
-            } else {
-                durationEl.textContent = `${days} Day${days > 1 ? 's' : ''}`;
-            }
+            const remH = hours % 24;
+            let text = `${days} Day${days > 1 ? 's' : ''}`;
+            if (remH > 0) text += ` ${remH}h`;
+            if (mins > 0) text += ` ${mins}m`;
+            durationEl.textContent = text;
+        } else if (hours > 0) {
+            let text = `${hours} Hour${hours > 1 ? 's' : ''}`;
+            if (mins > 0) text += ` ${mins}m`;
+            durationEl.textContent = text;
         } else {
-            durationEl.textContent = `${hours} Hour${hours > 1 ? 's' : ''}`;
+            durationEl.textContent = `${totalMinutes} Minute${totalMinutes > 1 ? 's' : ''}`;
         }
     }
 

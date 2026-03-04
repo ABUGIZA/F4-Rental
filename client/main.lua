@@ -50,6 +50,18 @@ CreateThread(function()
     if Target.System == 'interact' and Target.AddGlobalRentedVehicleInteraction then
         Target.AddGlobalRentedVehicleInteraction()
     end
+
+    -- C2 Fix: Register vehicle return interaction for ox_target / qb-target
+    if Target.System ~= 'none' and Target.System ~= 'interact' and Target.AddVehicleInteraction then
+        for _, v in ipairs(Config.Vehicles) do
+            Target.AddVehicleInteraction(v.model, {
+                label = 'Return Vehicle',
+                canInteract = function(entity)
+                    return Entity(entity).state.rentalVehicle == true
+                end
+            })
+        end
+    end
 end)
 
 function InitializeLocation(index, location)
@@ -119,6 +131,11 @@ RegisterNetEvent('F4-Rental:client:openMenu', function(data)
 end)
 
 RegisterNetEvent('F4-Rental:client:returnVehicle', function(vehicle)
+    -- M3 Fix: Normalize payload from different target systems
+    if type(vehicle) == 'table' then
+        vehicle = vehicle.entity or vehicle.vehicle or vehicle.id
+    end
+
     -- Validate entity parameter first
     if not vehicle then
         if Config.Debug then
@@ -189,11 +206,13 @@ RegisterNetEvent('F4-Rental:client:returnVehicle', function(vehicle)
     })
 end)
 
-if Config.TargetSystem == 'none' or Config.UseMarkers then
+-- C1 Fix: Use detected Target.System instead of Config.TargetSystem
+if Target.System == 'none' or Config.UseMarkers then
     CreateThread(function()
         while true do
             local sleep = 1000
             local playerCoords = GetEntityCoords(PlayerPedId())
+            local nearInteraction = false
 
             for i, location in ipairs(Config.Locations) do
                 local distance = #(playerCoords - location.coords)
@@ -216,6 +235,7 @@ if Config.TargetSystem == 'none' or Config.UseMarkers then
                     end
 
                     if distance < Config.InteractionDistance then
+                        nearInteraction = true
                         Bridge.DrawText('[E] ' .. location.name, 'primary')
 
                         if Utils.IsKeyJustPressed(Config.InteractionKey) then
@@ -227,10 +247,17 @@ if Config.TargetSystem == 'none' or Config.UseMarkers then
                 end
             end
 
+            if not nearInteraction then
+                Bridge.HideText()
+            end
+
             Wait(sleep)
         end
     end)
 end
+
+-- H3 Fix: Track warned rentals to prevent notification spam
+local warnedSoon = {}
 
 CreateThread(function()
     while true do
@@ -240,7 +267,8 @@ CreateThread(function()
             if not rentals then return end
 
             for _, rental in ipairs(rentals) do
-                if rental.timeLeft and rental.timeLeft <= Config.WarnBeforeExpiry and rental.timeLeft > 0 then
+                if rental.timeLeft and rental.timeLeft <= Config.WarnBeforeExpiry and rental.timeLeft > 0 and not warnedSoon[rental.id] then
+                    warnedSoon[rental.id] = true
                     Bridge.AdvancedNotify(
                         '⚠️ Rental Expiring',
                         'Your ' .. rental.label .. ' expires in ' .. rental.timeLeft .. ' minute(s)!',
@@ -385,6 +413,7 @@ function PerformAutoReturn(vehicle, rentalId, locationName)
     expiredRentalData[rentalId] = nil
     notifiedExpired[rentalId] = nil
     rentedVehicles[rentalId] = nil
+    warnedSoon[rentalId] = nil
     
     if returnBlip and DoesBlipExist(returnBlip) then
         SetBlipRoute(returnBlip, false)
@@ -392,16 +421,23 @@ function PerformAutoReturn(vehicle, rentalId, locationName)
         returnBlip = nil
     end
     
+    -- C7 Fix: Capture netId before leaving vehicle
+    local netId = VehToNet(vehicle)
+    
     local playerPed = PlayerPedId()
     TaskLeaveVehicle(playerPed, vehicle, 0)
     
     Wait(1500)
     
+    -- Pass-2 Fix: Send event BEFORE deleting vehicle so server can still validate entity
+    TriggerServerEvent('F4-Rental:server:vehicleReturned', rentalId, netId)
+    
+    -- Small delay to let the event reach the server before entity deletion propagates
+    Wait(500)
+    
     if DoesEntityExist(vehicle) then
         Utils.DeleteVehicle(vehicle)
     end
-    
-    TriggerServerEvent('F4-Rental:server:vehicleReturned', rentalId)
     
     Bridge.AdvancedNotify(
         '✅ Vehicle Returned',
@@ -473,21 +509,26 @@ RegisterNetEvent('esx:playerLoaded', function()
     RespawnSavedVehicles()
 end)
 
+-- M4 Fix: Wait for all async spawn threads before showing notification
 function RespawnSavedVehicles()
     Bridge.TriggerCallback('F4-Rental:server:getSpawnedVehicles', function(vehicles)
         if not vehicles or #vehicles == 0 then return end
         
         local respawnedCount = 0
+        local totalToSpawn = #vehicles
+        local doneCount = 0
         
         for _, v in ipairs(vehicles) do
             CreateThread(function()
                 local existingVehicle = FindVehicleByPlate(v.plate)
                 if existingVehicle then
                     rentedVehicles[v.id] = existingVehicle
+                    doneCount = doneCount + 1
                     return
                 end
                 
                 if rentedVehicles[v.id] and DoesEntityExist(rentedVehicles[v.id]) then
+                    doneCount = doneCount + 1
                     return
                 end
                 
@@ -499,11 +540,17 @@ function RespawnSavedVehicles()
                     timeout = timeout + 1
                 end
                 
-                if not HasModelLoaded(modelHash) then return end
+                if not HasModelLoaded(modelHash) then
+                    doneCount = doneCount + 1
+                    return
+                end
                 
                 local vehicle = CreateVehicle(modelHash, v.coords.x, v.coords.y, v.coords.z, v.heading or 0.0, true, true)
                 
-                if not vehicle then return end
+                if not vehicle then
+                    doneCount = doneCount + 1
+                    return
+                end
                 
                 local existTimeout = 0
                 while not DoesEntityExist(vehicle) and existTimeout < 50 do
@@ -511,7 +558,10 @@ function RespawnSavedVehicles()
                     existTimeout = existTimeout + 1
                 end
                 
-                if not DoesEntityExist(vehicle) then return end
+                if not DoesEntityExist(vehicle) then
+                    doneCount = doneCount + 1
+                    return
+                end
                 
                 if v.plate then
                     SetVehicleNumberPlateText(vehicle, v.plate)
@@ -526,19 +576,30 @@ function RespawnSavedVehicles()
                 
                 rentedVehicles[v.id] = vehicle
                 respawnedCount = respawnedCount + 1
+
+                -- Sync netId to server so playerDropped can save coords
+                TriggerServerEvent('F4-Rental:server:vehicleSpawned', v.id, VehToNet(vehicle))
                 
-                if Bridge.GiveKeys then
+                -- Wait for entity + state bags to replicate to server before granting keys
+                Wait(1500)
+                if Config.GiveKeys and Bridge.GiveKeys then
                     Bridge.GiveKeys(vehicle)
                 end
                 
                 SetModelAsNoLongerNeeded(modelHash)
+                doneCount = doneCount + 1
             end)
         end
         
-        Wait(1000)
-        if respawnedCount > 0 then
-            Bridge.Notify('Your rental vehicle(s) are where you left them!', 'success')
-        end
+        -- Wait for all spawn threads to complete
+        CreateThread(function()
+            while doneCount < totalToSpawn do
+                Wait(100)
+            end
+            if respawnedCount > 0 then
+                Bridge.Notify('Your rental vehicle(s) are where you left them!', 'success')
+            end
+        end)
     end)
 end
 

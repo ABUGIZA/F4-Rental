@@ -45,12 +45,17 @@ function OpenRentalUI(locationIndex, vehicleData)
         }
     end
 
+    -- M5 Fix: pass characterId so JS can scope localStorage per character
+    local playerData = Bridge.GetPlayerData()
+    local characterId = playerData and (playerData.citizenid or playerData.identifier) or 'default'
+
     SendNUIMessage({
         action = 'open',
         vehicles = formattedVehicles,
         durations = durations,
         payments = payments,
         locationIndex = locationIndex or 1,
+        characterId = characterId,
     })
 end
 
@@ -107,7 +112,7 @@ RegisterNUICallback('confirmRental', function(data, cb)
 
     local minutes = data.duration or 60
     local minuteRate = vehicleConfig.price / 24 / 60
-    local totalPrice = math.floor(minuteRate * minutes)
+    local totalPrice = math.ceil(minuteRate * minutes)
     DebugPrint('confirmRental - Price calculated:', totalPrice, 'Minutes:', minutes)
 
     local validLocationIndex = tonumber(data.locationIndex) or 1
@@ -124,11 +129,19 @@ RegisterNUICallback('confirmRental', function(data, cb)
                 local vehicle = Utils.SpawnVehicle(data.model, spawnCoords)
 
                 if vehicle then
+                    -- C9 Fix: Apply plate from server if provided
+                    if result.plate then
+                        SetVehicleNumberPlateText(vehicle, result.plate)
+                    end
+
                     Entity(vehicle).state:set('rentalVehicle', true, true)
                     Entity(vehicle).state:set('rentalId', result.rentalId, true)
 
                     -- Register rented vehicle in main.lua
                     TriggerEvent('F4-Rental:client:registerRentedVehicle', result.rentalId, vehicle)
+
+                    -- C3 Fix: Notify server that vehicle was spawned (sync memory + DB)
+                    TriggerServerEvent('F4-Rental:server:vehicleSpawned', result.rentalId, VehToNet(vehicle))
 
                     if Config.GiveKeys then
                         Bridge.GiveKeys(vehicle)
@@ -237,6 +250,9 @@ RegisterNUICallback('retrieveVehicle', function(data, cb)
 
                 Entity(vehicle).state:set('rentalVehicle', true, true)
                 Entity(vehicle).state:set('rentalId', result.rentalId, true)
+
+                -- Pass-2 Fix #3: Send netId to server for retrieve path too (not just initial rent)
+                TriggerServerEvent('F4-Rental:server:vehicleSpawned', result.rentalId, VehToNet(vehicle))
 
                 -- Register rented vehicle in main.lua
                 TriggerEvent('F4-Rental:client:registerRentedVehicle', result.rentalId, vehicle)

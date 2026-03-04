@@ -71,6 +71,44 @@ A modern, fully-featured car rental system for FiveM servers with a beautiful UI
    - Pricing
    - And more...
 
+5. **Add required item (`rental_contract`)**
+
+### ox_inventory
+Add this item to your `ox_inventory` items file (for example `ox_inventory/data/items.lua`):
+
+```lua
+['rental_contract'] = {
+    label = 'Rental Contract',
+    weight = 0,
+    stack = false,
+    consume = 0,
+    close = true,
+    description = 'Vehicle rental contract',
+    server = {
+        export = 'F4-Rental.rental_contract'
+    }
+},
+```
+
+> If you renamed this resource folder, replace `F4-Rental` with your actual resource name.
+
+### qb-inventory / qb-core shared items
+Add this item to `qb-core/shared/items.lua`:
+
+```lua
+['rental_contract'] = {
+    ['name'] = 'rental_contract',
+    ['label'] = 'Rental Contract',
+    ['weight'] = 0,
+    ['type'] = 'item',
+    ['image'] = 'rental_contract.png',
+    ['unique'] = true,
+    ['useable'] = true,
+    ['shouldClose'] = true,
+    ['description'] = 'Vehicle rental contract'
+},
+```
+
 ## ⚙️ Configuration
 
 ### Rental Locations
@@ -88,11 +126,11 @@ Config.Locations = {
 ### Rental Durations
 ```lua
 Config.RentalDurations = {
-    { label = "1 Hour", hours = 1, multiplier = 1.5 },
-    { label = "3 Hours", hours = 3, multiplier = 1.3 },
-    { label = "6 Hours", hours = 6, multiplier = 1.2 },
-    { label = "12 Hours", hours = 12, multiplier = 1.1 },
-    { label = "24 Hours", hours = 24, multiplier = 1.0 },
+    { days = 1, label = "1 Hour", multiplier = 0.5, minutes = 60 },
+    { days = 1, label = "3 Hours", multiplier = 0.5, minutes = 180 },
+    { days = 1, label = "6 Hours", multiplier = 0.8, minutes = 360 },
+    { days = 1, label = "12 Hours", multiplier = 1.0, minutes = 720 },
+    { days = 1, label = "1 Day", multiplier = 1.5, minutes = 1440 },
 }
 ```
 
@@ -160,8 +198,8 @@ For support, please open an issue on GitHub or contact the author
    - ✅ DELETE operations now work correctly in QBCore
 
 #### **Late Fee System Enhancements**
-- 💰 **Negative Balance Support** - Late fees apply even with insufficient funds
-- 🔄 **Continuous Charging** - Fees continue until vehicle is returned
+- **Accurate Accounting** - Late fees are added only when charge succeeds
+- **Retry Logic** - If charge fails (insufficient funds), system retries next interval
 - 🎯 **Smart Detection** - Only charges online players
 - 🗑️ **Auto-Cleanup** - Offline expired rentals are deleted without fees
 
@@ -196,3 +234,47 @@ DELETE FROM rental_history WHERE id = ? AND citizenid = ?
 ### Demo Videos
 [![Original Demo](https://img.shields.io/badge/Watch-Original_Demo-red)](https://streamable.com/6n4poh)
 [![Latest Update](https://img.shields.io/badge/Watch-Latest_Updates-brightgreen)](https://streamable.com/37awax)
+
+---
+
+## New Update (Post v1.1.0)
+
+### Core Fixes
+- Fixed proximity fallback when `TargetSystem = auto` and no target script is running.
+- Added return interaction registration for `ox_target` and `qb-target`.
+- Synced initial vehicle spawn to server memory/database (`vehicleSpawned` flow).
+- Added stale `vehicle_spawned` recovery to prevent blocked retrieval states.
+- Added retrieve lock/pending flow to prevent duplicate vehicle spawn race conditions.
+- Plate is now generated and saved immediately on rental creation.
+
+### Security & Validation
+- Return callbacks now validate rental vehicle proof (`netId` + rental state checks).
+- Auto-return event now validates player ownership, vehicle state, and return proximity.
+- QBX key grant now verifies rental ownership before giving keys.
+- Added stronger return-location enforcement when `Config.ReturnAtAnyLocation = false`.
+
+### Data Integrity
+- Improved spawned vehicle lifecycle sync on disconnect and reconnect.
+- Added configurable reconnect behavior via `Config.RespawnOnReconnect`.
+- Position save now validates ownership from database and updates reliably.
+- Rental contract item is removed on successful return/cancel cleanup paths.
+
+### Inventory & UI
+- `rental_contract` in `ox_inventory` is now handled as non-consumable on use.
+- Added per-character favorites storage in NUI (`localStorage` scoping).
+- Fixed contract duration display to correctly use minutes/hours.
+- Updated price rounding consistency for rental total display.
+
+### Late Fee Policy
+- Late fee total now increases only when actual money removal succeeds.
+- If charge fails, player is warned and the system retries on next interval.
+
+### Defaults / Config
+- `Config.Debug` default changed to `false` for production.
+
+### RespawnOnReconnect Demo (Enabled)
+- This demo shows the behavior when `Config.RespawnOnReconnect = true`.
+- If the player disconnects and reconnects, the rented vehicle respawns where it was left.
+
+[![Watch RespawnOnReconnect Demo](https://img.shields.io/badge/Watch-RespawnOnReconnect-blue)](https://streamable.com/29gp3q)
+
